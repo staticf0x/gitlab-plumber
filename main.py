@@ -18,14 +18,19 @@ def print_stage(stage_name: str, stage_jobs: List, pipeline):
     stage_duration = 0
 
     if any(job.status != "manual" for job in stage_jobs):
-        first_job = min(arrow.get(job.started_at) for job in stage_jobs if job.status != "manual")
-        last_job = max(arrow.get(job.finished_at) for job in stage_jobs if job.status != "manual")
+        if all(job.finished_at is not None for job in stage_jobs if job.status != "manual"):
+            first_job = min(
+                arrow.get(job.started_at) for job in stage_jobs if job.status != "manual"
+            )
+            last_job = max(
+                arrow.get(job.finished_at) for job in stage_jobs if job.status != "manual"
+            )
 
-        delta = last_job - first_job
-        stage_duration = delta.total_seconds()
-        stage_perc = stage_duration / pipeline.duration
+            delta = last_job - first_job
+            stage_duration = delta.total_seconds()
+            stage_perc = stage_duration / pipeline.duration
 
-        print(f"  {stage_duration:.1f}s ({stage_perc:.1%})\n")
+            print(f"  {stage_duration:.1f}s ({stage_perc:.1%})\n")
 
     for job in stage_jobs:
         match job.status:
