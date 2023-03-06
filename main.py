@@ -17,7 +17,7 @@ def print_stage(stage_name: str, stage_jobs: List, pipeline):
 
     stage_duration = 0
 
-    if any(job.status != "manual" for job in stage_jobs):
+    if pipeline.duration and any(job.status != "manual" for job in stage_jobs):
         if all(job.finished_at is not None for job in stage_jobs if job.status != "manual"):
             first_job = min(
                 arrow.get(job.started_at) for job in stage_jobs if job.status != "manual"
@@ -56,10 +56,18 @@ def print_stage(stage_name: str, stage_jobs: List, pipeline):
 
         queue_duration = job.queued_duration
         duration = job.duration
+        perc_time = 0
 
-        if queue_duration and duration and stage_duration:
+        if stage_duration:
             perc_time = duration / stage_duration
-            print(f"    {queue_duration:.1f}s + {duration:.1f}s ({perc_time:.1%})")
+
+        if queue_duration and duration:
+            print(f"    {queue_duration:.1f}s + {duration:.1f}s", end="")
+
+            if perc_time:
+                print(" ({perc_time:.1%})")
+            else:
+                print()
 
     print()
 
@@ -88,10 +96,13 @@ def pipeline(project: int, pipeline: int):
 
     p_queued = pipeline.queued_duration or 0
 
-    total_time = p_queued + pipeline.duration
-    duration_str = f"{total_time//60:d}m {total_time%60:d}s"
+    if pipeline.duration:
+        total_time = p_queued + pipeline.duration
+        duration_str = f"{total_time//60:d}m {total_time%60:d}s"
 
-    print(f"Total: {p_queued:.1f}s + {pipeline.duration:.1f}s = {duration_str}")
+        print(f"Total: {p_queued:.1f}s + {pipeline.duration:.1f}s = {duration_str}")
+    else:
+        print("Can't show total time: pipeline hasn't finished yet.")
 
 
 if __name__ == "__main__":
