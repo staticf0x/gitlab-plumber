@@ -65,7 +65,7 @@ def print_stage(stage_name: str, stage_jobs: List, pipeline):
             print(f"    {queue_duration:.1f}s + {duration:.1f}s", end="")
 
             if perc_time:
-                print(" ({perc_time:.1%})")
+                print(f" ({perc_time:.1%})")
             else:
                 print()
 
