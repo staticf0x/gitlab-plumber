@@ -52,7 +52,7 @@ def print_stage(stage_name: str, stage_jobs: List, pipeline):
         if job.allow_failure and job.status == "failed":
             display_name = f"({job.name})"
 
-        rich.print(f"  [{color}]{display_name}[/{color}]")
+        rich.print(f"  [{color}][link={job.web_url}]{display_name}[/link][/{color}]")
 
         queue_duration = job.queued_duration
         duration = job.duration
