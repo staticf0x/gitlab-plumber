@@ -58,7 +58,7 @@ def print_stage(stage_name: str, stage_jobs: List, pipeline):
         duration = job.duration
         perc_time = 0
 
-        if stage_duration:
+        if stage_duration and duration is not None:
             perc_time = duration / stage_duration
 
         if queue_duration and duration:
