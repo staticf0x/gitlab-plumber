@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 import os
-from typing import List
 
 import arrow
 import click
 import dotenv
 import gitlab
 import rich
+from rich.status import Status
+from rich.tree import Tree
 
 dotenv.load_dotenv()
 gl = gitlab.Gitlab(os.getenv("GITLAB_URI"), private_token=os.getenv("PRIVATE_TOKEN"))
 
 
-def print_stage(stage_name: str, stage_jobs: List, pipeline):
-    rich.print(f"[yellow]{stage_name}[/yellow]")
-
-    stage_duration = 0
+def get_stage_tree(stage_name: str, stage_jobs: list, pipeline) -> Tree:
+    stage_duration = 0.0
+    stage_duration_str = ""
 
     if pipeline.duration and any(job.status != "manual" for job in stage_jobs):
         if all(job.finished_at is not None for job in stage_jobs if job.status != "manual"):
@@ -30,7 +30,9 @@ def print_stage(stage_name: str, stage_jobs: List, pipeline):
             stage_duration = delta.total_seconds()
             stage_perc = stage_duration / pipeline.duration
 
-            print(f"  {stage_duration:.1f}s ({stage_perc:.1%})\n")
+            stage_duration_str = f"[bright_black]{stage_duration:.1f}s ({stage_perc:.1%})[/]"
+
+    tree = Tree(f"[yellow]{stage_name}[/yellow] {stage_duration_str}")
 
     for job in stage_jobs:
         match job.status:
@@ -52,7 +54,10 @@ def print_stage(stage_name: str, stage_jobs: List, pipeline):
         if job.allow_failure and job.status == "failed":
             display_name = f"({job.name})"
 
-        rich.print(f"  [{color}][link={job.web_url}]{display_name}[/link][/{color}]")
+        if job.status == "running":
+            node = f"⌛ [{color}][link={job.web_url}]{display_name}[/link][/{color}]"
+        else:
+            node = f"[{color}][link={job.web_url}]{display_name}[/link][/{color}]"
 
         queue_duration = job.queued_duration
         duration = job.duration
@@ -62,14 +67,14 @@ def print_stage(stage_name: str, stage_jobs: List, pipeline):
             perc_time = duration / stage_duration
 
         if queue_duration and duration:
-            print(f"    {queue_duration:.1f}s + {duration:.1f}s", end="")
+            node += f" [bright_black]{queue_duration:.1f}s + {duration:.1f}s[/]"
 
             if perc_time:
-                print(f" ({perc_time:.1%})")
-            else:
-                print()
+                node += f" [bright_black]({perc_time:.1%})[/]"
 
-    print()
+        tree.add(node)
+
+    return tree
 
 
 @click.group()
@@ -81,19 +86,29 @@ def cli():
 @click.option("--project", "-p", required=True)
 @click.option("--pipeline", required=True)
 def pipeline(project: int, pipeline: int):
-    project = gl.projects.get(project)
-    pipeline = project.pipelines.get(pipeline)
+    with Status("Loading pipeline jobs..."):
+        project = gl.projects.get(project)
+        pipeline = project.pipelines.get(pipeline)
+        jobs = reversed(pipeline.jobs.list(all=True))
 
-    jobs = reversed(pipeline.jobs.list(all=True))
     stages = {}
 
+    # Split jobs into stages
     for job in jobs:
         stages.setdefault(job.stage, [])
         stages[job.stage].append(job)
 
-    for stage, stage_jobs in stages.items():
-        print_stage(stage, stage_jobs, pipeline)
+    # Print the job tree
+    main_tree = Tree(f"[b][link={pipeline.web_url}]Pipeline {pipeline.id}[/link][/]")
 
+    for stage, stage_jobs in stages.items():
+        sub_tree = get_stage_tree(stage, stage_jobs, pipeline)
+        main_tree.add(sub_tree)
+
+    rich.print(main_tree)
+    print()
+
+    # Total duration
     p_queued = pipeline.queued_duration or 0
 
     if pipeline.duration:
