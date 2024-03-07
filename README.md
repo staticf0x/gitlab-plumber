@@ -2,7 +2,7 @@
 
 ## Installation
 
-- `$ poetry install`
+- `$ poetry install --no-root`
 
 ## Configuration
 
