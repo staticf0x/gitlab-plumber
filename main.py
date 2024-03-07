@@ -84,7 +84,7 @@ def pipeline(project: int, pipeline: int):
     project = gl.projects.get(project)
     pipeline = project.pipelines.get(pipeline)
 
-    jobs = reversed(pipeline.jobs.list())
+    jobs = reversed(pipeline.jobs.list(all=True))
     stages = {}
 
     for job in jobs:
