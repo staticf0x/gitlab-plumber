@@ -1,11 +1,11 @@
 [tool.poetry]
-name = "gl-cli"
+name = "gitlab-plumber"
 version = "0.1.0"
 description = ""
 authors = ["staticf0x <staticf0x@pm.me>"]
 license = "MIT"
 readme = "README.md"
-packages = [{include = "gl_cli"}]
+packages = []
 
 [tool.poetry.dependencies]
 python = "^3.11"
