@@ -35,13 +35,17 @@ def get_stage_tree(stage_name: str, stage_jobs: list, pipeline) -> Tree:
     tree = Tree(f"[yellow]{stage_name}[/yellow] {stage_duration_str}")
 
     for job in stage_jobs:
+        status_indicator = ""
+
         match job.status:
             case "failed":
                 color = "red"
             case "pending":
                 color = "yellow"
+                status_indicator = "💤 "
             case "running":
                 color = "cyan"
+                status_indicator = "⏳ "
             case "success":
                 color = "green"
             case "manual":
@@ -54,10 +58,7 @@ def get_stage_tree(stage_name: str, stage_jobs: list, pipeline) -> Tree:
         if job.allow_failure and job.status == "failed":
             display_name = f"({job.name})"
 
-        if job.status == "running":
-            node = f"⌛ [{color}][link={job.web_url}]{display_name}[/link][/{color}]"
-        else:
-            node = f"[{color}][link={job.web_url}]{display_name}[/link][/{color}]"
+        node = f"{status_indicator}[{color}][link={job.web_url}]{display_name}[/link][/{color}]"
 
         queue_duration = job.queued_duration
         duration = job.duration
@@ -99,7 +100,10 @@ def pipeline(project: int, pipeline: int):
         stages[job.stage].append(job)
 
     # Print the job tree
-    main_tree = Tree(f"[b][link={pipeline.web_url}]Pipeline {pipeline.id}[/link][/]")
+    main_tree = Tree(
+        f"[b][link={pipeline.web_url}]Pipeline {pipeline.id}[/link][/] in {project.path_with_namespace}\n"
+        f"[grey50]Started at {arrow.get(pipeline.created_at).to('local').format('YYYY-MM-DD HH:mm')} by {pipeline.user['username']}[/]"
+    )
 
     for stage, stage_jobs in stages.items():
         sub_tree = get_stage_tree(stage, stage_jobs, pipeline)
