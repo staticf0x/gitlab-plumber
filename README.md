@@ -24,6 +24,13 @@ whole pipeline duration.
 This shows the stages and jobs sorted by total run duration (queue is excluded)
 to narrow down which of the stages/jobs take the longest.
 
+### Show or blame by URL
+
+Instead of passing project ID and pipeline ID it is possible to pass the direct URL
+to a pipeline:
+
+`$ poetry run python3 main.py show --url https://gitlab.com/group/project/-/pipelines/123456`
+
 ## Installation
 
 - `$ poetry install --no-root`

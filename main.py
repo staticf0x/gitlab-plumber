@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import re
 from dataclasses import dataclass
 
 import arrow
@@ -31,6 +32,16 @@ class StageDuration:
 
 dotenv.load_dotenv()
 gl = gitlab.Gitlab(os.getenv("GITLAB_URI"), private_token=os.getenv("PRIVATE_TOKEN"))
+
+
+def parse_url(url: str) -> tuple[str, int]:
+    """Parse pipeline URL into project and pipeline ID."""
+    url_without_host = url.replace(os.getenv("GITLAB_URI"), "").lstrip("/")
+
+    if not (m := re.findall(r"(\w+\/\w+)\/\-\/pipelines\/(\d+)", url_without_host)):
+        raise ValueError("Cannot parse pipeline URL")
+
+    return m[0]
 
 
 def get_stage_tree(stage_name: str, stage_jobs: list, pipeline) -> Tree:
@@ -129,9 +140,17 @@ def cli():
 
 
 @cli.command(help="Show a single pipeline run as a tree of jobs")
-@click.option("--project", "-p", required=True)
-@click.option("--pipeline", required=True)
-def show(project: int, pipeline: int):
+@click.option("--project", "-p", required=False)
+@click.option("--pipeline", required=False)
+@click.option("--url", required=False)
+def show(project: int, pipeline: int, url: str):
+    if not (url or (project and pipeline)):
+        print("Required options missing: need --project and --pipeline or --url")
+        return
+
+    if url:
+        project, pipeline = parse_url(url)
+
     with Status("Loading pipeline jobs..."):
         project = gl.projects.get(project)
         pipeline = project.pipelines.get(pipeline)
@@ -170,9 +189,17 @@ def show(project: int, pipeline: int):
 
 
 @cli.command(help="Show a blame graph of long running jobs")
-@click.option("--project", "-p", required=True)
-@click.option("--pipeline", required=True)
-def blame(project: int, pipeline: int):
+@click.option("--project", "-p", required=False)
+@click.option("--pipeline", required=False)
+@click.option("--url", required=False)
+def blame(project: int, pipeline: int, url: str):
+    if not (url or (project and pipeline)):
+        print("Required options missing: need --project and --pipeline or --url")
+        return
+
+    if url:
+        project, pipeline = parse_url(url)
+
     with Status("Loading pipeline jobs..."):
         project = gl.projects.get(project)
         pipeline = project.pipelines.get(pipeline)
