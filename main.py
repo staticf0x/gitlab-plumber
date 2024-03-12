@@ -38,7 +38,7 @@ def parse_url(url: str) -> tuple[str, int]:
     """Parse pipeline URL into project and pipeline ID."""
     url_without_host = url.replace(os.getenv("GITLAB_URI"), "").lstrip("/")
 
-    if not (m := re.findall(r"\/?([\w+\/\w+]+)\/\-\/pipelines\/(\d+)", url_without_host)):
+    if not (m := re.findall(r"\/?([\w\/\-]+)\/\-\/pipelines\/(\d+)", url_without_host)):
         raise ValueError("Cannot parse pipeline URL")
 
     return m[0]
