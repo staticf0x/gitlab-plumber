@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
+"""gitlab-plumber is a simple tool to view and analyze the duration of GitLab pipelines."""
 import os
 import re
+import sys
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Self
 
 import arrow
 import click
 import dotenv
 import gitlab
+import pandas as pd
 import rich
+from gitlab.v4.objects import ProjectPipeline
 from rich.console import Console
-from rich.progress import BarColumn, Progress, TextColumn
+from rich.progress import BarColumn, Progress, TextColumn, track
 from rich.status import Status
 from rich.style import Style
 from rich.tree import Tree
@@ -17,16 +23,20 @@ from rich.tree import Tree
 
 @dataclass
 class JobDuration:
+    """Represent a single job duration."""
+
     queue: float | None
     run: float | None
 
 
 @dataclass
 class StageDuration:
+    """Represent a whole stage duration, including individual jobs."""
+
     run: float
     jobs: dict[str, JobDuration]
 
-    def __lt__(self, other):
+    def __lt__(self, other: Self) -> bool:
         return self.run < other.run
 
 
@@ -39,12 +49,13 @@ def parse_url(url: str) -> tuple[str, int]:
     url_without_host = url.replace(os.getenv("GITLAB_URI"), "").lstrip("/")
 
     if not (m := re.findall(r"\/?([\w\/\-]+)\/\-\/pipelines\/(\d+)", url_without_host)):
-        raise ValueError("Cannot parse pipeline URL")
+        msg = "Cannot parse pipeline URL"
+        raise ValueError(msg)
 
     return m[0]
 
 
-def get_stage_tree(stage_name: str, stage_jobs: list, pipeline) -> Tree:
+def get_stage_tree(stage_name: str, stage_jobs: list, pipeline: ProjectPipeline) -> Tree:
     """Get a rich.tree.Tree for a given stage, including its jobs."""
     stage_duration = 0.0
     stage_duration_str = ""
@@ -110,7 +121,7 @@ def get_stage_tree(stage_name: str, stage_jobs: list, pipeline) -> Tree:
     return tree
 
 
-def get_stage_duration(stage_name: str, stage_jobs: list) -> StageDuration:
+def get_stage_duration(stage_jobs: list) -> StageDuration:
     """Get stage and job durations for a given stage."""
     stage_duration = 0.0
 
@@ -134,16 +145,38 @@ def get_stage_duration(stage_name: str, stage_jobs: list) -> StageDuration:
     return StageDuration(run=stage_duration, jobs=job_durations)
 
 
+def get_pipeline_duration(pipeline: ProjectPipeline) -> list[tuple[str | float]]:
+    """Get a list of all job durations for analytics."""
+    stages = {}
+    jobs = reversed(pipeline.jobs.list(all=True))
+
+    # Split jobs into stages
+    for job in jobs:
+        stages.setdefault(job.stage, [])
+        stages[job.stage].append(job)
+
+    stage_durations = []
+
+    for stage, stage_jobs in stages.items():
+        stage_duration = get_stage_duration(stage_jobs)
+
+        for job, job_duration in stage_duration.jobs.items():
+            stage_durations.append((stage, job, job_duration.queue, job_duration.run))
+
+    return stage_durations
+
+
 @click.group()
 def cli():
     pass
 
 
 @cli.command(help="Show a single pipeline run as a tree of jobs")
-@click.option("--project", "-p", required=False)
-@click.option("--pipeline", required=False)
-@click.option("--url", required=False)
-def show(project: int, pipeline: int, url: str):
+@click.option("--project", "-p", required=False, type=int, help="Project ID")
+@click.option("--pipeline", required=False, type=int, help="Pipeline ID")
+@click.option("--url", required=False, type=str, help="Pipeline URL")
+def show(project: int, pipeline: int, url: str) -> None:
+    """Show a tree of a single pipeline."""
     if not (url or (project and pipeline)):
         print("Required options missing: need --project and --pipeline or --url")
         return
@@ -163,10 +196,12 @@ def show(project: int, pipeline: int, url: str):
         stages.setdefault(job.stage, [])
         stages[job.stage].append(job)
 
+    started_str = arrow.get(pipeline.created_at).to("local").format("YYYY-MM-DD HH:mm")
+
     # Print the job tree
     main_tree = Tree(
-        f"[b][link={pipeline.web_url}]Pipeline {pipeline.id}[/link][/] in {project.path_with_namespace}\n"
-        f"[grey50]Started at {arrow.get(pipeline.created_at).to('local').format('YYYY-MM-DD HH:mm')} by {pipeline.user['username']}[/]"
+        f"[b][link={pipeline.web_url}]Pipeline {pipeline.id}[/link][/] in {project.path_with_namespace}\n"  # noqa: E501
+        f"[grey50]Started at {started_str} by {pipeline.user['username']}[/]",
     )
 
     for stage, stage_jobs in stages.items():
@@ -189,10 +224,11 @@ def show(project: int, pipeline: int, url: str):
 
 
 @cli.command(help="Show a blame graph of long running jobs")
-@click.option("--project", "-p", required=False)
-@click.option("--pipeline", required=False)
-@click.option("--url", required=False)
-def blame(project: int, pipeline: int, url: str):
+@click.option("--project", "-p", required=False, type=int, help="Project ID")
+@click.option("--pipeline", required=False, type=int, help="Pipeline ID")
+@click.option("--url", required=False, type=str, help="Pipeline URL")
+def blame(project: int, pipeline: int, url: str) -> None:
+    """Show a breakdown of stages and jobs from longest to shortest for a single pipeline."""
     if not (url or (project and pipeline)):
         print("Required options missing: need --project and --pipeline or --url")
         return
@@ -209,10 +245,12 @@ def blame(project: int, pipeline: int, url: str):
         rich.print("[bold red]Cannot analyze running pipelines[/]")
         return
 
+    started_str = arrow.get(pipeline.created_at).to("local").format("YYYY-MM-DD HH:mm")
+
     console = Console(highlight=False)
     console.print(
-        f"[b][link={pipeline.web_url}]Pipeline {pipeline.id}[/link][/] in {project.path_with_namespace}\n"
-        f"[grey50]Started at {arrow.get(pipeline.created_at).to('local').format('YYYY-MM-DD HH:mm')} by {pipeline.user['username']}[/]\n"
+        f"[b][link={pipeline.web_url}]Pipeline {pipeline.id}[/link][/] in {project.path_with_namespace}\n"  # noqa: E501
+        f"[grey50]Started at {started_str} by {pipeline.user['username']}[/]\n",
     )
 
     stages = {}
@@ -225,7 +263,7 @@ def blame(project: int, pipeline: int, url: str):
     stage_durations: dict[str, StageDuration] = {}
 
     for stage, stage_jobs in stages.items():
-        stage_duration = get_stage_duration(stage, stage_jobs)
+        stage_duration = get_stage_duration(stage_jobs)
         stage_durations[stage] = stage_duration
 
     total = max(stage_durations.items(), key=lambda v: v[1].run)[1].run
@@ -272,20 +310,67 @@ def blame(project: int, pipeline: int, url: str):
 
         for job, job_duration in sorted(job_durations, key=lambda v: v[1].run, reverse=True):
             bar.add_task(
-                job, total=total, completed=job_duration.run, perc_time=job_duration.run / total
+                job,
+                total=total,
+                completed=job_duration.run,
+                perc_time=job_duration.run / total,
             )
 
         console.print(f"\n[u]Stage: [b]{stage}[/]\n")
         console.print(bar)
 
 
+@cli.command(help="Analyze multiple pipelines of a single project")
+@click.option("--project", "-p", type=int, help="Project ID")
+@click.option(
+    "--num", "-n", default=10, type=int, help="Number of pipelines to analyze (default: 10)"
+)
+@click.option("--ref", default="main", help="Git ref to choose (default: main)")
+@click.option("--source", help="Trigger source (example: push, trigger)")
+def analyze(project: int, num: int, ref: str, source: str | None) -> None:
+    """Generate a CSV file with duration data over multiple pipelines in a single project."""
+    with Status("Loading pipelines..."):
+        project = gl.projects.get(project)
+
+        pipelines = project.pipelines.list(
+            page=0,
+            per_page=num,
+            ref=ref,
+            status="success",
+            order_by="id",
+            sort="desc",
+            iter=True,
+            source=source,
+        )
+
+    if not pipelines:
+        rich.print("[bold red]No pipelines for the given options[/]")
+        return
+
+    durations = []
+
+    for pipeline in track(pipelines, "Analyzing pipelines..."):
+        duration = get_pipeline_duration(pipeline)
+
+        for job in duration:
+            durations.append([pipeline.id, *job])
+
+    df = pd.DataFrame(durations, columns=["pipeline_id", "stage", "job", "job_queue", "job_run"])
+    df.index.name = "n"
+
+    Path("out").mkdir(exist_ok=True)
+
+    dt = arrow.now().format("YYYYMMDD-HHmmss")
+    df.to_csv(f"out/{project.path_with_namespace.replace('/', '-')}-{ref}-{dt}.csv")
+
+
 if __name__ == "__main__":
     if not os.getenv("GITLAB_URI"):
         rich.print("[bold red]GITLAB_URI not configured[/bold red]")
-        exit(1)
+        sys.exit(1)
 
     if not os.getenv("PRIVATE_TOKEN"):
         rich.print("[bold red]PRIVATE_TOKEN not configured[/bold red]")
-        exit(1)
+        sys.exit(1)
 
     cli()

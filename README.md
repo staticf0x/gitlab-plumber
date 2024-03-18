@@ -31,6 +31,23 @@ to a pipeline:
 
 `$ poetry run python3 main.py show --url https://gitlab.com/group/project/-/pipelines/123456`
 
+### Analyze multiple pipelines
+
+You can generate a CSV file with duration of jobs for multiple pipelines:
+
+`$ poetry run python3 main.py analyze --project <PROJECT_ID>`
+
+By default this pulls data from the latest 10 pipelines on the `main` branch.
+To modify this behavior, see the available options:
+
+```
+Options:
+  -p, --project INTEGER  Project ID
+  -n, --num INTEGER      Number of pipelines to analyze (default: 10)
+  --ref TEXT             Git ref to choose (default: main)
+  --source TEXT          Trigger source (example: push, trigger)
+```
+
 ## Installation
 
 - `$ poetry install --no-root`
