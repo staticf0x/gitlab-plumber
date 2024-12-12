@@ -323,7 +323,7 @@ def blame(project: int, pipeline: int, url: str) -> None:
 @cli.command(help="Analyze multiple pipelines of a single project")
 @click.option("--project", "-p", type=int, help="Project ID")
 @click.option(
-    "--num", "-n", default=10, type=int, help="Number of pipelines to analyze (default: 10)"
+    "--num", "-n", default=10, type=int, help="Number of pipelines to analyze (default: 10)",
 )
 @click.option("--ref", default="main", help="Git ref to choose (default: main)")
 @click.option("--source", help="Trigger source (example: push, trigger)")
